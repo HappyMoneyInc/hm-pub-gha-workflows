@@ -1,0 +1,38 @@
+name: Compile and test with Gradle
+
+on:
+  workflow_call:
+    inputs:
+      ROLE_TO_ASSUME:
+        required: true
+        type: string
+        description: "The new artifact version"
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          role-to-assume: ${{ inputs.ROLE_TO_ASSUME }}
+          aws-region: us-east-1
+
+      - name: ECR access
+        run: |
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 730502903637.dkr.ecr.us-east-1.amazonaws.com
+          echo "CODEARTIFACT_AUTH_TOKEN=`aws codeartifact get-authorization-token --domain happymoney --domain-owner 730502903637 --query authorizationToken --output text`" >> $GITHUB_ENV
+
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v3
+        with:
+          java-version: '11'
+          distribution: 'adopt'
+          cache: gradle
+
+      - name: Unit Tests
+        run: |
+          ./gradlew test
