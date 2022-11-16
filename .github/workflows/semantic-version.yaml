@@ -1,0 +1,36 @@
+name: Retrieve version and update via semantic-release
+
+on:
+  workflow_call:
+    outputs:
+      version:
+        description: "The new artifact version"
+        value: ${{ jobs.get-version.outputs.version }}
+    secrets:
+      GH_TOKEN:
+        description: 'A token passed from the caller workflow'
+        required: true
+jobs:
+  get-version:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN:  ${{ secrets.GH_TOKEN }}
+    outputs:
+      version: ${{ steps.store-version.outputs.versionout }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+      - name: setup semantic-release
+        run: npm install -g semantic-release @semantic-release/git @semantic-release/changelog -D
+      - name: release
+        run: npx semantic-release
+      - name: find current version
+        uses: actions-ecosystem/action-get-latest-tag@v1
+        id: get-latest-tag
+      - name: get current version tag
+        id: store-version
+        run: |
+          echo "versionenv=${{ steps.get-latest-tag.outputs.tag }}" >> $GITHUB_ENV
+          echo ${{ steps.get-latest-tag.outputs.tag }}
+          echo "::set-output name=versionout::${{ steps.get-latest-tag.outputs.tag }}"
