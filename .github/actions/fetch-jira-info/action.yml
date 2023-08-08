@@ -1,0 +1,12 @@
+name: 'Fetch Jira Info'
+description: 'Fetches the description of a Jira ticket'
+inputs:
+  jira-ticket-key:
+    description: 'Key of the Jira ticket to fetch'
+    required: true
+outputs:
+  jira-description:
+    description: 'Description of the Jira ticket'
+runs:
+  using: 'node12'
+  main: 'index.js'

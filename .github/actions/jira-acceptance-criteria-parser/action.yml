@@ -1,0 +1,12 @@
+name: 'Jira Description Parser'
+description: 'Parse Jira Description to Extract Acceptance Criteria'
+inputs:
+  jira-description:
+    description: 'Jira Description in JSON format'
+    required: false
+outputs:
+  acceptance-criteria:
+    description: 'Acceptance Criteria as a Markdown Task List'
+runs:
+  using: 'node12'
+  main: 'index.js'
