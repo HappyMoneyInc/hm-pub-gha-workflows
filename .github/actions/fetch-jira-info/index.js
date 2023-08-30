@@ -15,7 +15,7 @@ async function run() {
             }
         });
 
-        const description = JSON.stringify(response.data.fields.description);
+        const description = JSON.stringify(response.data.fields.customfield_14591);
 
         core.setOutput('jira-description', description);
     } catch (error) {
