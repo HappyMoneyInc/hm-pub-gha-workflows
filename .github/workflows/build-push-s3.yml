@@ -80,7 +80,7 @@ on:
 jobs:
 
   build:
-    name: Build ${{ input.environment }}
+    name: Build ${{ inputs.environment }}
     runs-on: ubuntu-latest
     #      group: shared-builds
     permissions:
@@ -98,7 +98,7 @@ jobs:
 
     #set the environment so we can access the correct secrets (?)
     environment:
-      name: ${{ input.environment }}
+      name: ${{ inputs.environment }}
     env:
       HM_ACTIVE_ENV: ${{ inputs.environment }}
       NODE_VERSION: 20
