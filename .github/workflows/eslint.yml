@@ -25,8 +25,8 @@ jobs:
   # ESLint
   eslint:
     name: ESLint
-    runs-on:
-      group: shared-builds
+    runs-on: ubuntu-latest
+    #      group: shared-builds
     env:
       ESLINT_RC: .eslintrc.*
       NODE_VERSION: 20

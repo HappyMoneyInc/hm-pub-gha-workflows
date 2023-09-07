@@ -27,8 +27,8 @@ jobs:
   # Jest
   jest:
     name: Jest
-    runs-on:
-      group: shared-builds
+    runs-on: ubuntu-latest
+    #      group: shared-builds
     env:
       JEST_CONFIG: jest.config.*
       NODE_VERSION: 20

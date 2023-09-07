@@ -1,0 +1,141 @@
+# version 1.1.2
+name: WF AWS Deploy S3
+
+on:
+  workflow_call:
+    inputs:
+      env:
+        description: 'The destination environment to deploy to'
+        required: true
+        type: string
+      imageTag:
+        description: 'Docker tag to find'
+        required: true
+        type: string
+      projectName:
+        description: 'Name of project'
+        required: true
+        type: string
+      deploymentAwsAccount:
+        description: 'The number of the AWS Account number we want to deploy to'
+        required: true
+        type: string
+    secrets:
+      GPR_PAT:
+        description: 'Token with necessary scopes to find package versions'
+        required: true
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+#      group: shared-builds
+    permissions:
+      id-token: write
+      actions: read
+      checks: read
+      contents: read
+      deployments: read
+      issues: read
+      packages: write
+      pull-requests: read
+      repository-projects: read
+      security-events: read
+      statuses: read
+
+    steps:
+      #login to sharedservices so that we can access ECR
+      - name: AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: arn:aws:iam::730502903637:role/iam-${{ inputs.projectName }}-ci
+          aws-region: us-east-1
+          mask-aws-account-id: 'no'
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@main
+
+      - name: Retrieve ECR password
+        id: retrieve-password
+        run: |
+          echo "ecr-password=$(aws ecr get-login-password)" >> $GITHUB_OUTPUT
+
+  # Startup the container in a new job, so that we can copy files out of it to s3
+  aws-s3-cp:
+    name: Copy to AWS S3
+    needs: [setup]
+    runs-on:
+      group: shared-builds
+    services:
+      # Mount the busybox image,
+      service-aws:
+        image: ${{ needs.setup.outputs.ecr-registry }}/${{ inputs.projectName }}:${{ inputs.imageTag }}
+        options: --name ${{ inputs.projectName }}
+        credentials:
+          username: AWS
+          password: ${{ needs.setup.outputs.ecr-password }}
+    permissions:
+      id-token: write
+      actions: read
+      checks: read
+      contents: read
+      deployments: read
+      issues: read
+      packages: write
+      pull-requests: read
+      repository-projects: read
+      security-events: read
+      statuses: read
+    steps:
+      - name: Copy Dumb Busybox
+        run: |
+          mkdir -p build/
+          docker cp ${{ inputs.projectName }}:/build/. ./build/
+          ls -la build/
+
+      # Login to shared services from thew new context (service)
+      - name: AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::730502903637:role/iam-${{ inputs.projectName }}-ci
+          aws-region: us-east-1
+          mask-aws-account-id: 'no'
+
+      #login to nonprod so we can access the deployment bucket
+#      - name: Configure AWS Credentials
+#        uses: aws-actions/configure-aws-credentials@v3
+#        with:
+#          role-to-assume: arn:aws:iam::790856068772:role/gh-ca-${{ inputs.projectName }}-${{ inputs.env }}
+#          aws-region: us-east-1
+
+      # Have to do this janky way, because OIDC is not setup in nonprod (?)
+
+      #TODO need to change the account here depending on the environment to deploy to (nonprod, prod, prodsandbox)
+      - name: AWS Assume Role
+        run: |
+          role_creds="$(aws \
+            sts assume-role \
+            --role-arn arn:aws:iam::${{ inputs.deploymentAwsAccount }}:role/gh-ca-${{ inputs.projectName }}-${{ inputs.env }} \
+            --role-session-name ${{ inputs.projectName }}-${{ inputs.env }} \
+            --output json
+          )"
+          AWS_ACCESS_KEY_ID=$(echo ${role_creds} | jq -re '.Credentials.AccessKeyId')
+          echo "::add-mask::$AWS_ACCESS_KEY_ID"
+          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
+          AWS_SECRET_ACCESS_KEY=$(echo ${role_creds} | jq -re '.Credentials.SecretAccessKey')
+          echo "::add-mask::$AWS_SECRET_ACCESS_KEY"
+          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
+          AWS_SESSION_TOKEN=$(echo ${role_creds} | jq -re '.Credentials.SessionToken')
+          echo "::add-mask::$AWS_SESSION_TOKEN"
+          echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $GITHUB_ENV
+
+
+      - name: AWS S3 Copy
+        run: |
+          aws \
+            s3 sync \
+             ./build/ \
+             s3://hm-s3-bucket-${{ inputs.projectName }}-${{ inputs.env }}-ue1/ \
+             --delete \
+             --cache-control "public, max-age=0, must-revalidate" \
+             --acl "bucket-owner-full-control"
