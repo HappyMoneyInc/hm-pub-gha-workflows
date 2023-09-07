@@ -2,7 +2,7 @@ name: Build and Push the S3 Application
 on:
   workflow_call:
     inputs:
-      environment:
+      environments:
         description: 'HM_ACTIVE_ENV to run against'
         required: true
         type: string
@@ -79,9 +79,12 @@ on:
 
 jobs:
   build:
-    name: Build
+    name: Build ${{ matrix.environment }}
     runs-on: ubuntu-latest
     #      group: shared-builds
+    strategy:
+      matrix:
+        environment: ${{fromJson(github.event.inputs.environments)}}
     permissions:
       id-token: write
       actions: read
@@ -97,7 +100,7 @@ jobs:
     environment:
       name: ${{ needs.setup.outputs.active-env }}
     env:
-      HM_ACTIVE_ENV: ${{ needs.setup.outputs.active-env }}
+      HM_ACTIVE_ENV: ${{ matrix.environment }}
       NODE_VERSION: 20
 
     steps:
@@ -112,7 +115,7 @@ jobs:
       - name: ENV
         uses: ./.github/actions/env
         with:
-          env: ${{ inputs.environment }}
+          env: ${{ env.HM_ACTIVE_ENV }}
           DD_API_KEY: ${{ secrets.DD_API_KEY }}
           DD_APP_KEY: ${{ secrets.DD_APP_KEY }}
           DD_CLIENT_TOKEN: ${{ secrets.DD_CLIENT_TOKEN }}
@@ -131,7 +134,7 @@ jobs:
           # DataDog Variables
           DD_SERVICE=${{ inputs.projectName }}
           DD_VERSION=${{ inputs.imageTag }}
-          DD_ENV=${{ inputs.environment }}
+          DD_ENV=${{ env.HM_ACTIVE_ENV }}
           DD_TAGS=""
 
           EOT
@@ -183,7 +186,7 @@ jobs:
           datadog-ci sourcemaps \
             upload build \
             --minified-path-prefix /static/ \
-            --service ${{ inputs.environment }} \
+            --service ${{ inputs.projectName }} \
             --release-version ${{ inputs.imageTag }}
 
       # No need to copy sourcemaps to docker containers
@@ -226,9 +229,9 @@ jobs:
             ${{ steps.login-ecr.outputs.registry }}/${{ inputs.projectName }}
 
           tags: |
-            type=sha,suffix=-${{ inputs.environment }}
+            type=sha,suffix=-${{ env.HM_ACTIVE_ENV }}
             type=raw,${{ inputs.imageTag }}
-            type=raw,${{ inputs.environment }}
+            type=raw,${{ env.HM_ACTIVE_ENV }}
 
       # TODO not sure what we want to put here, but seems like this
       # could be in the dockerfile (team, domain, etc...)
@@ -239,7 +242,7 @@ jobs:
           build-args: |
             "VCS_REF_ARG=${{ inputs.fullSha }}"
             "VERSION_ARG=${{ inputs.imageTag }}"
-            "HM_ACTIVE_ENV_ARG=${{ inputs.environment }}"
+            "HM_ACTIVE_ENV_ARG=${{ env.HM_ACTIVE_ENV }}"
             "DD_SERVICE_ARG=${{ inputs.projectName }}"
             "DD_LOGS_INJECTION_ARG=false"
             "DD_TRACE_DEBUG_ARG=false"
