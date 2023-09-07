@@ -1,0 +1,81 @@
+# version 1.1.2
+name: Run Jest
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'The destination environment to deploy to'
+        required: true
+        type: string
+      projectName:
+        description: 'Name of project, e.g., `happy-admin-portal`'
+        required: true
+        type: string
+    secrets:
+      GPR_PAT:
+        description: 'Token with the necessary scopes to find package versions'
+        required: true
+      DD_API_KEY:
+        description: 'Used to upload artifacts to datadog'
+
+jobs:
+  #     _        _
+  #  _ | |___ __| |_
+  # | || / -_|_-<  _|
+  #  \__/\___/__/\__|
+  #
+  # Jest
+  jest:
+    name: Jest
+    runs-on:
+      group: shared-builds
+    env:
+      JEST_CONFIG: jest.config.*
+      NODE_VERSION: 20
+
+    steps:
+      - name: 🤘 Getting the repo
+        uses: actions/checkout@v3
+
+      # TODO I think this is using a duplication of the env variables
+      # from the filesystem instead of github environment
+      - name: ENV
+        uses: ./.github/actions/env
+        with:
+          env: ${{ inputs.environment }}`)
+          skip-summary: true
+
+      - name: Installing node
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 🧶 install
+        uses: ./.github/actions/yarn
+        timeout-minutes: 20
+        with:
+          token: ${{ secrets.GPR_PAT }}
+
+      - name: Jest
+        id: test
+        env:
+          GITHUB_TOKEN: ${{ secrets.GPR_PAT }}
+          DD_SERVICE: ${{ inputs.projectName }}
+          DD_ENV: ci
+          NODE_OPTIONS: -r dd-trace/ci/init
+        run: |
+          yarn test --ci --reporters=jest-junit 2> /dev/null || true
+
+      - name: Check for JUnit File
+        id: check_junit
+        run: |
+          echo "file_exists=$(test -f junit.xml && echo true || echo false)" >> $GITHUB_ENV
+
+      - name: DataDog Upload
+        if: steps.jest_test.outcome == 'success' && env.file_exists == 'true'
+        env:
+          DATADOG_API_KEY: ${{ secrets.DD_API_KEY }}
+          DD_SERVICE: ${{ inputs.projectName }}
+          DD_ENV: ci
+        run: |
+          datadog-ci junit upload junit.xml

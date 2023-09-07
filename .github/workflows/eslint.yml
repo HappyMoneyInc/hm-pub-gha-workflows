@@ -1,0 +1,71 @@
+name: Run ESLint
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'The destination environment to deploy to'
+        required: true
+        type: string
+      projectName:
+        description: 'Name of project, e.g., `happy-admin-portal`'
+        required: true
+        type: string
+    secrets:
+      GPR_PAT:
+        description: 'Token with the necessary scopes to find package versions'
+        required: true
+      DD_API_KEY:
+        description: 'Used to upload artifacts to datadog'
+jobs:
+  #  ___ ___ _    _     _
+  # | __/ __| |  (_)_ _| |_
+  # | _|\__ \ |__| | ' \  _|
+  # |___|___/____|_|_||_\__|
+  #
+  # ESLint
+  eslint:
+    name: ESLint
+    runs-on:
+      group: shared-builds
+    env:
+      ESLINT_RC: .eslintrc.*
+      NODE_VERSION: 20
+
+    steps:
+      - name: 🤘 Getting the repo
+        uses: actions/checkout@v3
+
+      - name: Installing node
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 🧶 install
+        uses: ./.github/actions/yarn
+        timeout-minutes: 20
+        with:
+          token: ${{ secrets.GPR_PAT }}
+
+      - name: Run ESLint
+        id: eslint_run
+        env:
+          GITHUB_TOKEN: ${{ secrets.GPR_PAT }}
+          DD_SERVICE: ${{ inputs.projectName }}
+          DD_ENV: ci
+          NODE_OPTIONS: -r dd-trace/ci/init
+        run: |
+          yarn eslint --format junit --output-file eslint-output.xml 2> /dev/null || true
+
+      - name: Check for ESLint JUnit File
+        id: check_eslint_junit
+        run: |
+          echo "eslint_file_exists=$(test -f eslint-output.xml && echo true || echo false)" >> $GITHUB_ENV
+
+      - name: DataDog Upload for ESLint
+        if: steps.eslint_run.outcome == 'success' && env.eslint_file_exists == 'true'
+        env:
+          DATADOG_API_KEY: ${{ secrets.DD_API_KEY }}
+          DD_SERVICE: ${{ inputs.projectName }}
+          DD_ENV: ci
+        run: |
+          datadog-ci junit upload eslint-output.xml
