@@ -2,7 +2,7 @@ name: Build and Push the S3 Application
 on:
   workflow_call:
     inputs:
-      environments:
+      environment:
         description: 'HM_ACTIVE_ENV to run against'
         required: true
         type: string
@@ -78,13 +78,11 @@ on:
         required: true
 
 jobs:
+
   build:
-    name: Build ${{ matrix.environment }}
+    name: Build ${{ input.environment }}
     runs-on: ubuntu-latest
     #      group: shared-builds
-    strategy:
-      matrix:
-        environment: ${{fromJson(github.event.inputs.environments)}}
     permissions:
       id-token: write
       actions: read
@@ -97,10 +95,12 @@ jobs:
       repository-projects: read
       security-events: read
       statuses: read
+
+    #set the environment so we can access the correct secrets (?)
     environment:
-      name: ${{ needs.setup.outputs.active-env }}
+      name: ${{ input.environment }}
     env:
-      HM_ACTIVE_ENV: ${{ matrix.environment }}
+      HM_ACTIVE_ENV: ${{ input.environment }}
       NODE_VERSION: 20
 
     steps:
