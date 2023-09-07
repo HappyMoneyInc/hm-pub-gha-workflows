@@ -100,7 +100,7 @@ jobs:
     environment:
       name: ${{ input.environment }}
     env:
-      HM_ACTIVE_ENV: ${{ input.environment }}
+      HM_ACTIVE_ENV: ${{ inputs.environment }}
       NODE_VERSION: 20
 
     steps:
