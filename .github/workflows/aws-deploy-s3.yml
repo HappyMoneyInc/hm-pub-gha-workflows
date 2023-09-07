@@ -64,8 +64,8 @@ jobs:
   aws-s3-cp:
     name: Copy to AWS S3
     needs: [setup]
-    runs-on:
-      group: shared-builds
+    runs-on: ubuntu-latest
+    #      group: shared-builds
     services:
       # Mount the busybox image,
       service-aws:
