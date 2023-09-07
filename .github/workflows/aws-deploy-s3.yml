@@ -72,7 +72,7 @@ jobs:
     services:
       # Mount the busybox image,
       service-aws:
-        image: ${{ needs.setup.outputs.ecr-registry }}/${{ inputs.projectName }}:${{ inputs.imageTag }}
+        image: ${{ needs.setup.outputs.ecr-registry }}/${{ inputs.projectName }}:${{ inputs.imageTag }}-${{ inputs.env }}
         options: --name ${{ inputs.projectName }}
         credentials:
           username: AWS
