@@ -29,6 +29,9 @@ jobs:
   setup:
     runs-on: ubuntu-latest
 #      group: shared-builds
+    outputs:
+      ecr-password: ${{ steps.retrieve-password.outputs.ecr-password }}
+      ecr-registry: ${{ steps.login-ecr.outputs.registry }}
     permissions:
       id-token: write
       actions: read
