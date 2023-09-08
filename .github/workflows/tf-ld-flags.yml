@@ -23,12 +23,14 @@ on:
       LAUNCH_DARKLY_ACCESS_TOKEN:
         description: 'LaunchDarkly API access token used to authorize terraform actions'
         required: true
+        type: string
       GPR_PAT:
         description: 'Token with the necessary scopes to find package versions'
         required: true
+        type: string
 
 concurrency:
-  group: ci-terraform-${{ inputs.env }}
+  group: ci-terraform-${{ inputs.environment }}
   cancel-in-progress: false
 
 jobs:
@@ -62,6 +64,7 @@ jobs:
       name: ${{ inputs.environment }}
     env:
       HM_ACTIVE_ENV: ${{ inputs.environment }}
+      TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
 
     # log into shared services account
     steps:
@@ -70,58 +73,23 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::730502903637:role/iam-${{ inputs.projectName }}-ci
           aws-region: us-east-1
-          mask-aws-account-id: 'no'
+          mask-aws-account-id: 'yes'
 
       - name: 🤘 Getting the repo
         uses: actions/checkout@v3
         with:
           ref: ${{ inputs.ref || github.ref }}
 
-      - uses: hashicorp/setup-terraform@v2
-
-      - name: Fmt
-        env:
-          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
-        id: fmt
-        working-directory: ./tf
-        run: terraform fmt -check
-
-      - name: Get
-        env:
-          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
-        working-directory: ./tf
-        run: terraform get -update=true
-
-      - name: Init
-        env:
-          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
-        id: init
-        working-directory: ./tf
-        run: terraform init -reconfigure -backend-config=./backends/${{ env.HM_ACTIVE_ENV }}.tfvars -var-file=./envs/${{ env.HM_ACTIVE_ENV }}.tfvars
-
-      - name: Validate
-        env:
-          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
-        id: validate
-        working-directory: ./tf
-        run: terraform validate -no-color
-
-      - name: Plan
-        env:
-          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
-        id: plan
-        working-directory: ./tf
-        run: |
-          terraform plan \
-            -no-color \
-            -var-file=./envs/${{ env.HM_ACTIVE_ENV }}.tfvars \
-            --out tf.plan \
-            -input=false
-
-      - name: Setup Terraform
+      - name: Setup Terraform and Cache
         uses: hashicorp/setup-terraform@v2
+        id: setup-terraform
+
+      - name: Cache Terraform Modules
+        uses: actions/cache@v2
         with:
-          terraform_wrapper: false
+          path: "~/.terraform.d/plugin-cache"
+          key: ${{ runner.os }}-terraform-${{ hashFiles('**/*.tf') }}
+          restore-keys: ${{ runner.os }}-terraform-
 
       # See also: https://github.com/actions/setup-go/pull/62
       - run: echo "GO_VERSION=$(cat .go-version)" >> $GITHUB_ENV
@@ -135,10 +103,38 @@ jobs:
           go install github.com/hashicorp/terraform-config-inspect@latest
           go install github.com/minamijoyo/tfmigrate@latest
 
+
+      - name: Initialize Terraform
+        id: init
+        working-directory: ./tf
+        run: terraform init -reconfigure -backend-config=./backends/${{ env.HM_ACTIVE_ENV }}.tfvars -var-file=./envs/${{ env.HM_ACTIVE_ENV }}.tfvars
+
+      - name: Validate Terraform
+        id: validate
+        working-directory: ./tf
+        run: terraform validate -no-color
+
+      - name: Format Terraform
+        id: fmt
+        working-directory: ./tf
+        run: terraform fmt -check
+
+      - name: Get
+        working-directory: ./tf
+        run: terraform get -update=true
+
+      - name: Plan Terraform Changes
+        id: plan
+        working-directory: ./tf
+        run: |
+          terraform plan \
+            -no-color \
+            -var-file=./envs/${{ env.HM_ACTIVE_ENV }}.tfvars \
+            --out tf.plan \
+            -input=false
+
       - name: Show
         if: steps.plan.outcome == 'success'
-        env:
-          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
         working-directory: ./tf
         run: terraform show -no-color -json tf.plan 1>tf.json 2>/dev/null
 
@@ -151,8 +147,6 @@ jobs:
       # This is a WIP to fix terraform issues running in a CI pipeline
       - name: Import
         if: false
-        env:
-          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
         id: import
         working-directory: ./tf
         run: |
@@ -213,8 +207,6 @@ jobs:
 
       - name: Apply
         if: steps.plan.outcome == 'success'
-        env:
-          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
         id: apply
         working-directory: ./tf
 
@@ -228,9 +220,6 @@ jobs:
           (steps.apply.outcome == 'failure' ||
            steps.plan.outcome == 'failure' ||
            steps.init.outcome == 'failure')
-
-        env:
-          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GPR_PAT }}
@@ -331,8 +320,6 @@ jobs:
         if: |
           (success() || failure()) &&
           steps.issues.outcome == 'success'
-        env:
-          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
         working-directory: ./tf
 
         run: |
