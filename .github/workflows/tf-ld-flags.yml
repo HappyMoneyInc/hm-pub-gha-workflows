@@ -23,11 +23,9 @@ on:
       LAUNCH_DARKLY_ACCESS_TOKEN:
         description: 'LaunchDarkly API access token used to authorize terraform actions'
         required: true
-        type: string
       GPR_PAT:
         description: 'Token with the necessary scopes to find package versions'
         required: true
-        type: string
 
 concurrency:
   group: ci-terraform-${{ inputs.environment }}
