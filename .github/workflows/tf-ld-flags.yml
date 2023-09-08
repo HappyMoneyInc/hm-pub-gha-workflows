@@ -7,23 +7,9 @@ name: WF Tf Flags
 on:
   workflow_call:
     inputs:
-      prNumber:
-        description: 'GitHub PR number'
-        required: false
-        default: '0'
-        type: string
       environment:
         description: 'Environment to match against LaunchDarkly Project'
         required: true
-        type: string
-      ref:
-        description: 'Optional branch or tag ref that triggered the workflow run.
-          The ref given is fully-formed, meaning that:
-
-          - for branches the format is `refs/heads/<branch_name>`,
-          - for pull requests it is `refs/pull/<pr_number>/merge`,
-          - for tags it is `refs/tags/<tag_name>`. For example, `refs/heads/feature-branch-1`.'
-        required: false
         type: string
       projectName:
         description: 'Name of project, e.g., `happy-admin-portal`'
