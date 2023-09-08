@@ -1,0 +1,367 @@
+# version 1.1.2
+# This workflow provisions launch darkly through terraform yaml files. Each
+# launch darkly project and environment is mapped to HM_ACTIVE_ENV.
+# Terraform Best Practices: https://github.com/ozbillwang/terraform-best-practices
+# Terraform Advanced: https://github.com/AndrewFarley/advanced-terraform
+name: WF Tf Flags
+on:
+  workflow_call:
+    inputs:
+      prNumber:
+        description: 'GitHub PR number'
+        required: false
+        default: '0'
+        type: string
+      environment:
+        description: 'Environment to match against LaunchDarkly Project'
+        required: true
+        type: string
+      ref:
+        description: 'Optional branch or tag ref that triggered the workflow run.
+          The ref given is fully-formed, meaning that:
+
+          - for branches the format is `refs/heads/<branch_name>`,
+          - for pull requests it is `refs/pull/<pr_number>/merge`,
+          - for tags it is `refs/tags/<tag_name>`. For example, `refs/heads/feature-branch-1`.'
+        required: false
+        type: string
+      projectName:
+        description: 'Name of project, e.g., `happy-admin-portal`'
+        required: true
+        type: string
+      ldProjectKey:
+        description: 'The id of the launch darkly project to use'
+        required: true
+        type: string
+    secrets:
+      LAUNCH_DARKLY_ACCESS_TOKEN:
+        description: 'LaunchDarkly API access token used to authorize terraform actions'
+        required: true
+      GPR_PAT:
+        description: 'Token with the necessary scopes to find package versions'
+        required: true
+
+concurrency:
+  group: ci-terraform-${{ inputs.env }}
+  cancel-in-progress: false
+
+jobs:
+
+  terraform:
+    name: Tf LD Flags → AWS S3
+    runs-on: ubuntu-latest
+    # The id-token permissions is needed to interact with GitHub's OIDC Token
+    # endpoint. If you specify the access for any scopes, all of those that are
+    # not specified are set to `none`, hence why we are setting the rest to
+    # `read`.
+    permissions:
+      id-token: write
+      actions: read
+      checks: read
+      contents: read
+      deployments: read
+      issues: read
+      packages: read
+      pull-requests: read
+      repository-projects: read
+      security-events: read
+      statuses: read
+    outputs:
+      fmt: ${{ steps.fmt.outcome }}
+      init: ${{ steps.init.outcome }}
+      validate: ${{ steps.validate.outputs.stdout }}
+      terraform: ${{ steps.plan.outputs.stdout }}
+      plan: ${{ steps.plan.outcome }}
+    environment:
+      name: ${{ inputs.environment }}
+    env:
+      HM_ACTIVE_ENV: ${{ inputs.environment }}
+
+    # log into shared services account
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::730502903637:role/iam-${{ inputs.projectName }}-ci
+          aws-region: us-east-1
+          mask-aws-account-id: 'no'
+
+      - name: 🤘 Getting the repo
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: hashicorp/setup-terraform@v2
+
+      - name: Fmt
+        env:
+          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
+        id: fmt
+        working-directory: ./tf
+        run: terraform fmt -check
+
+      - name: Get
+        env:
+          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
+        working-directory: ./tf
+        run: terraform get -update=true
+
+      - name: Init
+        env:
+          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
+        id: init
+        working-directory: ./tf
+        run: terraform init -reconfigure -backend-config=./backends/${{ env.HM_ACTIVE_ENV }}.tfvars -var-file=./envs/${{ env.HM_ACTIVE_ENV }}.tfvars
+
+      - name: Validate
+        env:
+          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
+        id: validate
+        working-directory: ./tf
+        run: terraform validate -no-color
+
+      - name: Plan
+        env:
+          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
+        id: plan
+        working-directory: ./tf
+        run: |
+          terraform plan \
+            -no-color \
+            -var-file=./envs/${{ env.HM_ACTIVE_ENV }}.tfvars \
+            --out tf.plan \
+            -input=false
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_wrapper: false
+
+      # See also: https://github.com/actions/setup-go/pull/62
+      - run: echo "GO_VERSION=$(cat .go-version)" >> $GITHUB_ENV
+      - uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Install Terraform Tools
+        run: |
+          go install github.com/hashicorp/terraform-config-inspect@latest
+          go install github.com/minamijoyo/tfmigrate@latest
+
+      - name: Show
+        if: steps.plan.outcome == 'success'
+        env:
+          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
+        working-directory: ./tf
+        run: terraform show -no-color -json tf.plan 1>tf.json 2>/dev/null
+
+      - name: Upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: tf-plan.json
+          path: ./tf/tf.json
+
+      # This is a WIP to fix terraform issues running in a CI pipeline
+      - name: Import
+        if: false
+        env:
+          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
+        id: import
+        working-directory: ./tf
+        run: |
+          # (1/2) This is an example tf file
+          # resource "launchdarkly_feature_flag" "toggle_service_provider_flag" {
+          #   key = "toggle_service_provider"
+          # }
+
+          # resource "launchdarkly_feature_flag_environment" "toggle_service_provider_environment" {
+          #   flag_id = launchdarkly_feature_flag.toggle_service_provider_flag.id
+          #   env_key = var.launch_darkly_environment_key
+          # }
+
+          # (2/2) That is used to generate the following commands
+          terraform state \
+            rm launchdarkly_feature_flag.toggle_service_provider_flag
+
+          terraform state \
+            rm launchdarkly_feature_flag_environment.toggle_service_provider_environment
+
+          terraform import \
+            -var-file=./envs/${{ env.HM_ACTIVE_ENV }}.tfvars \
+            launchdarkly_feature_flag.toggle_service_provider_flag \
+            ${{ needs.setup.outputs.proj-key }}/toggle_service_provider
+
+          terraform import \
+            -var-file=./envs/${{ env.HM_ACTIVE_ENV }}.tfvars \
+            launchdarkly_feature_flag_environment.toggle_service_provider_environment \
+            ${{ needs.setup.outputs.proj-key }}/${{ needs.setup.outputs.active-env }}/toggle_service_provider
+
+          # If needed we can get the keys in LD already, but this wont work because we dont know all the values
+          keys="$(curl -s \
+            -X GET \
+            -H "Authorization: $TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN"
+            "https://app.launchdarkly.com/api/v2/flags/${{ needs.setup.outputs.proj-key }}" | \
+            jq -r '.items  | .[] .key')"
+
+          for key in "${keys[@]}"; do \
+            terraform import \
+              -var-file=./envs/${{ env.HM_ACTIVE_ENV }}.tfvars \
+              launchdarkly_feature_flag.flag_segment \
+              ${{ needs.setup.outputs.proj-key }}/${key}
+
+            terraform import \
+              -no-color \
+              -var-file=./envs/${{ env.HM_ACTIVE_ENV }}.tfvars \
+              launchdarkly_feature_flag_environment.flag_segment \
+              ${{ needs.setup.outputs.proj-key }}/${{ needs.setup.outputs.active-env }}/${key}
+          done
+
+          # Export the tf files to json then query it with jq using `terraform-config-inspect`.
+          # However, this too does not give us all the info we need.
+          terraform-config-inspect --json
+
+          # Best to export the plan to json then query it with jq to generate the import statements
+          terraform show -no-color tf.plan
+          terraform show -json tf.plan | jq '.' >| tf.json
+
+      - name: Apply
+        if: steps.plan.outcome == 'success'
+        env:
+          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
+        id: apply
+        working-directory: ./tf
+
+        run: terraform apply -auto-approve -no-color -input=false tf.plan
+
+        # uat
+      - name: Issues
+        id: issues
+        if: |
+          (success() || failure()) &&
+          (steps.apply.outcome == 'failure' ||
+           steps.plan.outcome == 'failure' ||
+           steps.init.outcome == 'failure')
+
+        env:
+          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GPR_PAT }}
+          script: |
+            const { execSync } = require('child_process')
+            const json = require('./tf/tf.json')
+            const resources = json.configuration.root_module.resources.reduce((reducer, resource) => {
+              if (resource.type === 'launchdarkly_feature_flag') {
+                reducer.ffs.push(resource)
+              } else if (resource.type === 'launchdarkly_feature_flag_environment') {
+                reducer.envs.push(resource)
+              }
+              return reducer
+            }, {
+              ffs: [],
+              envs: [],
+            })
+
+            const lookup = resources.envs.reduce((reducer, env) => {
+              const references = env.expressions.flag_id.references
+              if (references) {
+                const found = resources.ffs.find((ff) => references.includes(ff.address))
+                if (found) {
+                  const flagKey = found.expressions?.key?.constant_value
+                  reducer.byFlagKey[flagKey] = {
+                    flagKey,
+                    featureFlagName: found.name,
+                    featureFlagEnvName: env.name,
+                    featureFlag: found,
+                    featureFlagEnv: env,
+                  }
+
+                  reducer.byFeatureFlagName[found.name] = {
+                    flagKey,
+                    featureFlagName: found.name,
+                    featureFlagEnvName: env.name,
+                    featureFlag: found,
+                    featureFlagEnv: env,
+                  }
+
+                  reducer.byFeatureFlagEnvName[env.name] = {
+                    flagKey,
+                    featureFlagName: found.name,
+                    featureFlagEnvName: env.name,
+                    featureFlag: found,
+                    featureFlagEnv: env,
+                  }
+                }
+              }
+              return reducer
+            }, {
+              byFlagKey: {},
+              byFeatureFlagName: {},
+              byFeatureFlagEnvName: {},
+            })
+
+            const changes = json.resource_changes.filter((resource) => {
+              if (resource.change.actions.includes('create')) {
+                return resource
+              }
+            })
+
+            const commands = changes.map((change) => {
+              const env = '${{ env.HM_ACTIVE_ENV }}'
+              const projKey = '${{ needs.setup.outputs.proj-key }}'
+
+              if (change.type === 'launchdarkly_feature_flag') {
+                const val = lookup.byFeatureFlagName[change.name]
+                if (val) {
+                  const str1 = `terraform state rm ${ change.address }`
+                  console.log(str1)
+                  const str2 = `terraform import -var-file=./envs/${ env }.tfvars ${ change.address } ${ projKey }/${ val.flagKey }`
+                  console.log(str2)
+                  const result = execSync(str2, { cwd: `${ process.cwd() }/tf`, encoding: 'utf-8' }).trim()
+                  console.log(result)
+                }
+              } else if (change.type === 'launchdarkly_feature_flag_environment') {
+                const val = lookup.byFeatureFlagEnvName[change.name]
+                if (val) {
+                  const str1 = `terraform state rm ${ change.address }`
+                  console.log(str1)
+                  const str2 = `terraform import -var-file=./envs/${ env }.tfvars ${ change.address } ${ projKey }/${ env }/${ val.flagKey }`
+                  console.log(str2)
+                  const result = execSync(str2, { cwd: `${ process.cwd() }/tf`, encoding: 'utf-8' }).trim()
+                  console.log(result)
+                }
+              } else if (change.type === 'launchdarkly_metric') {
+                const str1 = `terraform state rm ${ change.address }`
+                console.log(str1)
+                const str2 = `terraform import -var-file=./envs/${ env }.tfvars ${ change.address } ${ projKey }/${ change.change.after.key }`
+                console.log(str2)
+                const result = execSync(str2, { cwd: `${ process.cwd() }/tf`, encoding: 'utf-8' }).trim()
+                console.log(result)
+              }
+            })
+
+      - name: Issues Cleanup
+        if: |
+          (success() || failure()) &&
+          steps.issues.outcome == 'success'
+        env:
+          TF_VAR_LAUNCH_DARKLY_ACCESS_TOKEN: ${{ secrets.LAUNCH_DARKLY_ACCESS_TOKEN }}
+        working-directory: ./tf
+
+        run: |
+          terraform init \
+            -reconfigure \
+            -backend-config=./backends/${{ env.HM_ACTIVE_ENV }}.tfvars
+
+          terraform plan \
+            -no-color \
+            -var-file=./envs/${{ env.HM_ACTIVE_ENV }}.tfvars \
+            --out tf.plan \
+            -input=false
+
+          terraform apply \
+            -auto-approve \
+            -no-color \
+            -input=false \
+            tf.plan
