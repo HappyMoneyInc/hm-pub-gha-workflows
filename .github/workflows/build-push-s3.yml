@@ -230,8 +230,8 @@ jobs:
             ${{ steps.login-ecr.outputs.registry }}/${{ inputs.projectName }}
 
           tags: |
-            type=sha,suffix=-${{ env.HM_ACTIVE_ENV }}
-            type=raw,${{ inputs.imageTag }}-${{ env.HM_ACTIVE_ENV }}
+            type=sha,prefix=${{ env.HM_ACTIVE_ENV }}-
+            type=raw,${{ env.HM_ACTIVE_ENV }}-${{ inputs.imageTag }}
             type=raw,${{ env.HM_ACTIVE_ENV }}
 
       # TODO not sure what we want to put here, but seems like this
