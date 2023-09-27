@@ -3,6 +3,11 @@
 # launch darkly project and environment is mapped to HM_ACTIVE_ENV.
 # Terraform Best Practices: https://github.com/ozbillwang/terraform-best-practices
 # Terraform Advanced: https://github.com/AndrewFarley/advanced-terraform
+
+# The majority of this code was copied from existing workflow files developed by @acates.  I have made some
+# minor changes related to deleting steps that are not relevant to our workflow or parameterizing code  to
+# make it more applicable across repositories
+
 name: WF Tf Flags
 on:
   workflow_call:

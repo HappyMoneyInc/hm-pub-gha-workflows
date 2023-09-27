@@ -1,4 +1,8 @@
 # version 1.1.2
+# The majority of this code was copied from existing workflow files developed by @acates.  I have made some
+# minor changes related to deleting steps that are not relevant to our workflow or parameterizing code  to
+# make it more applicable across repositories
+
 name: WF AWS Deploy S3
 
 on:
