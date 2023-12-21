@@ -1,0 +1,254 @@
+# The majority of this code was copied from existing workflow files developed by @acates.  I have made some
+# minor changes related to deleting steps that are not relevant to our workflow or parameterizing code  to
+# make it more applicable across repositories
+
+name: Build and Push the S3 Application
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'HM_ACTIVE_ENV to run against'
+        required: true
+        type: string
+      imageTag:
+        description: 'Version tag, e.g., `1.0.0-4c81cca` or `1.0.0-pr-168`'
+        required: true
+        type: string
+      repoSlug:
+        description: 'Safe repo slug, e.g., `happymoneyinc/happy-admin-portal`'
+        required: true
+        type: string
+      fullSha:
+        description: 'Full commit SHA, e.g., `a2255dade370bfcf3ac8b5ed67f6e1dae1e7dce3`'
+        required: false
+        type: string
+      semver:
+        description: 'Semver of project, e.g., `1.0.0`'
+        required: false
+        type: string
+      projectName:
+        description: 'Name of project, e.g., `happy-admin-portal`'
+        required: true
+        type: string
+      ref:
+        description: 'Optional branch or tag ref that triggered the workflow run.
+          The ref given is fully-formed, meaning that:
+
+          - for branches the format is `refs/heads/<branch_name>`,
+          - for pull requests it is `refs/pull/<pr_number>/merge`,
+          - for tags it is `refs/tags/<tag_name>`. For example, `refs/heads/feature-branch-1`.'
+        required: false
+        type: string
+    outputs:
+      gitTags:
+        description: 'Git tags of happy-admin-portal'
+        value: ${{ jobs.build-s3.outputs.gitTags }}
+      imageTags:
+        description: 'Docker image tags of happy-admin-portal'
+        value: ${{ jobs.build-s3.outputs.imageTags }}
+    secrets:
+      DD_API_KEY:
+        description: 'API keys are unique to your organization. It is required by the Datadog Agent to submit metrics and events to Datadog.'
+        required: true
+      DD_APP_KEY:
+        description: 'Application keys, in conjunction with your DD_API_KEY, give users access to Datadogs API.'
+        required: true
+      DD_CLIENT_TOKEN:
+        description: 'Client token is required by the web browser to submit logs and rum events to Datadog.'
+        required: true
+      DD_RUM_APPLICATION_ID:
+        description: 'Datadog Real User Monitoring (RUM) application id.'
+        required: true
+      GPR_PAT:
+        description: 'Token with the necessary scopes to find package versions'
+        required: true
+      LAUNCH_DARKLY_CLIENT_SIDE_ID:
+        description: 'Configure JavaScript-based client-side SDKs to use the client-side ID.'
+        required: true
+      LAUNCH_DARKLY_MOBILE_KEY:
+        description: 'Configure mobile SDKs, and other non-JavaScript client-side SDKs, to use the mobile key.'
+        required: true
+      LAUNCH_DARKLY_SDK_KEY:
+        description: 'Configure server-side SDKs to use the SDK key.'
+        required: true
+      REACT_APP_PUBLIC_OKTA_CLIENT_ID:
+        description: 'The OKTA client id'
+        required: true
+      REACT_APP_PUBLIC_OKTA_STATE:
+        description: 'The OKTA state'
+        required: true
+      SEGMENT_KEY:
+        description: 'The write key is a unique identifier lets Segment know who is sending the analytics.'
+        required: true
+
+jobs:
+
+  build:
+    name: Build ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    #      group: shared-builds
+    permissions:
+      id-token: write
+      actions: read
+      checks: read
+      contents: read
+      deployments: read
+      issues: read
+      packages: write
+      pull-requests: read
+      repository-projects: read
+      security-events: read
+      statuses: read
+
+    #set the environment so we can access the correct secrets (?)
+    environment:
+      name: ${{ inputs.environment }}
+    env:
+      HM_ACTIVE_ENV: ${{ inputs.environment }}
+      NODE_VERSION: 20
+
+    steps:
+
+      - name: 🤘 Getting the repo
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.ref }}
+
+
+      # TODO why do we have envs directory if thses are coming from GH envs?
+      # also, seems like we have to maintain the variable mapping in 2 places
+      - name: ENV
+        uses: ./.github/actions/env
+        with:
+          env: ${{ env.HM_ACTIVE_ENV }}
+          DD_API_KEY: ${{ secrets.DD_API_KEY }}
+          DD_APP_KEY: ${{ secrets.DD_APP_KEY }}
+          DD_CLIENT_TOKEN: ${{ secrets.DD_CLIENT_TOKEN }}
+          DD_RUM_APPLICATION_ID: ${{ secrets.DD_RUM_APPLICATION_ID }}
+          LAUNCH_DARKLY_CLIENT_SIDE_ID: ${{ secrets.LAUNCH_DARKLY_CLIENT_SIDE_ID }}
+          LAUNCH_DARKLY_MOBILE_KEY: ${{ secrets.LAUNCH_DARKLY_MOBILE_KEY }}
+          LAUNCH_DARKLY_SDK_KEY: ${{ secrets.LAUNCH_DARKLY_SDK_KEY }}
+          REACT_APP_PUBLIC_OKTA_CLIENT_ID: ${{ secrets.REACT_APP_PUBLIC_OKTA_CLIENT_ID }}
+          REACT_APP_PUBLIC_OKTA_STATE: ${{ secrets.REACT_APP_PUBLIC_OKTA_STATE }}
+          SEGMENT_KEY: ${{ secrets.SEGMENT_KEY }}
+
+      # TODO maybe put team/domain tags here?
+      - name: 🚚 Dump secrets to dotenv file
+        run: |
+          cat <<EOT >> .env
+          # DataDog Variables
+          DD_SERVICE=${{ inputs.projectName }}
+          DD_VERSION=${{ inputs.imageTag }}
+          DD_ENV=${{ env.HM_ACTIVE_ENV }}
+          DD_TAGS=""
+
+          EOT
+
+      #  __      __   _                  _     ___      _ _    _
+      #  \ \    / /__| |__ _ __  __ _ __| |__ | _ )_  _(_) |__| |
+      #   \ \/\/ / -_) '_ \ '_ \/ _` / _| / / | _ \ || | | / _` |
+      #    \_/\_/\___|_.__/ .__/\__,_\__|_\_\ |___/\_,_|_|_\__,_|
+      #                   |_|
+      - name: Set Swap Space
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 10
+
+      - name: Installing node
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 🧶 install
+        uses: ./.github/actions/yarn
+        timeout-minutes: 20
+        with:
+          token: ${{ secrets.GPR_PAT }}
+
+      - name: 🏭 Webpack Build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GPR_PAT }}
+          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_ENV: production
+        run: |
+          yarn compile
+          cp .env build/.env
+
+
+      #     ___      _____
+      #    /_\ \    / / __|
+      #   / _ \ \/\/ /\__ \
+      #  /_/ \_\_/\_/ |___/
+      #
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        id: configure-aws-credentials
+        continue-on-error: true
+        with:
+          role-to-assume: arn:aws:iam::730502903637:role/iam-${{ inputs.projectName }}-ci
+          aws-region: us-east-1
+          mask-aws-account-id: 'no'
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        if: steps.configure-aws-credentials.outcome == 'success'
+        uses: aws-actions/amazon-ecr-login@main
+
+      # TODO seems like we're duplicating code here depending on nonprod/prod
+      # need to determine what is actually needed,
+      - name: Docker Meta AWS
+        id: docker_aws_meta
+        if: steps.login-ecr.outcome == 'success'
+        uses: docker/metadata-action@v4
+        with:
+          flavor: |
+            latest=false
+
+          images: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ inputs.projectName }}
+
+          tags: |
+            type=sha,prefix=${{ env.HM_ACTIVE_ENV }}-
+            type=raw,${{ env.HM_ACTIVE_ENV }}-${{ inputs.imageTag }}
+            type=raw,${{ env.HM_ACTIVE_ENV }}
+
+      # TODO not sure what we want to put here, but seems like this
+      # could be in the dockerfile (team, domain, etc...)
+      - name: Copy build/ to AWS Image and Push
+        if: steps.login-ecr.outcome == 'success'
+        uses: docker/build-push-action@v4
+        with:
+          build-args: |
+            "VCS_REF_ARG=${{ inputs.fullSha }}"
+            "VERSION_ARG=${{ inputs.imageTag }}"
+            "HM_ACTIVE_ENV_ARG=${{ env.HM_ACTIVE_ENV }}"
+            "DD_SERVICE_ARG=${{ inputs.projectName }}"
+            "DD_LOGS_INJECTION_ARG=false"
+            "DD_TRACE_DEBUG_ARG=false"
+            "DD_TAGS_ARG=''"
+          secrets: |
+            "GITHUB_TOKEN=${{ secrets.GPR_PAT }}"
+          context: .
+          file: Dockerfile
+          tags: ${{ steps.docker_aws_meta.outputs.tags }}
+          push: true
+
+
+      #   ___          _             _____
+      #  |   \ ___  __| |_____ _ _  |_   _|_ _ __ _ ___
+      #  | |) / _ \/ _| / / -_) '_|   | |/ _` / _` (_-<
+      #  |___/\___/\__|_\_\___|_|     |_|\__,_\__, /__/
+      #                                       |___/
+
+      # TODO, I think we're just returning the docker tags here, but I'm not
+      # sure they're needed.
+      - name: Cleanup Image Tags
+        uses: actions/github-script@v6
+        id: image_tags
+        if: |
+          steps.docker_aws_meta.outcome == 'success'
+        with:
+          script: |
+            const tags = JSON.parse('${{ steps.docker_aws_meta.outputs.json }}' || '${{ steps.docker_aws_meta.outputs.json }}').tags.map((tag) => tag.split(':')[1])
+            core.info(`==> built with image tags ${ tags.join(', ') }`)
+            core.setOutput('tags', JSON.stringify(tags))
