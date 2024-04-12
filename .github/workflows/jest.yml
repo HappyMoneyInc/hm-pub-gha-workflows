@@ -21,6 +21,7 @@ on:
         required: true
       DD_API_KEY:
         description: 'Used to upload artifacts to datadog'
+        required: false
 
 jobs:
   #     _        _
