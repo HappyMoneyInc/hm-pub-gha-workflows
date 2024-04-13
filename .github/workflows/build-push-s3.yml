@@ -73,13 +73,19 @@ on:
         required: true
       REACT_APP_PUBLIC_OKTA_CLIENT_ID:
         description: 'The OKTA client id'
-        required: true
+        required: false
       REACT_APP_PUBLIC_OKTA_STATE:
         description: 'The OKTA state'
-        required: true
+        required: false
       SEGMENT_KEY:
         description: 'The write key is a unique identifier lets Segment know who is sending the analytics.'
         required: true
+      COGNITO_CLIENTID:
+        description: 'Cognito User Client Id'
+        required: false
+      COGNITO_USER_POOL_ID:
+        description: 'Cognito User Pool Id'
+        required: false
 
 jobs:
 
