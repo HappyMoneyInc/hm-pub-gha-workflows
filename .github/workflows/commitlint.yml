@@ -1,0 +1,55 @@
+# The majority of this code was copied from existing workflow files developed by @acates.  I have made some
+# minor changes related to deleting steps that are not relevant to our workflow or parameterizing code  to
+# make it more applicable across repositories
+
+name: Run Commitlint
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'The destination environment to deploy to'
+        required: true
+        type: string
+      projectName:
+        description: 'Name of project, e.g., `happy-admin-portal`'
+        required: true
+        type: string
+    secrets:
+      GPR_PAT:
+        description: 'Token with the necessary scopes to find package versions'
+        required: true
+
+jobs:
+
+  # Commitlint
+  eslint:
+    name: Commitlint
+    runs-on: ubuntu-latest
+    #      group: shared-builds
+    env:
+      NODE_VERSION: 20
+
+    steps:
+      - name: 🤘 Getting the repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Installing node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 🧶 install
+        uses: ./.github/actions/yarn
+        timeout-minutes: 20
+        with:
+          token: ${{ secrets.GPR_PAT }}
+
+      - name: Check last commit
+        run: |
+          echo "LAST_COMMIT=$(git rev-parse HEAD)" >> $GITHUB_ENV
+
+      - name: Validate commit with commitlint
+        run: |
+          commitlint --from ${{ env.LAST_COMMIT }} --to HEAD --verbose

@@ -1,0 +1,81 @@
+# The majority of this code was copied from existing workflow files developed by @acates.  I have made some
+# minor changes related to deleting steps that are not relevant to our workflow or parameterizing code  to
+# make it more applicable across repositories
+
+name: Run StyleLint
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'The destination environment to deploy to'
+        required: true
+        type: string
+      projectName:
+        description: 'Name of project, e.g., `happy-admin-portal`'
+        required: true
+        type: string
+    secrets:
+      GPR_PAT:
+        description: 'Token with the necessary scopes to find package versions'
+        required: true
+      DD_API_KEY:
+        description: 'Used to upload artifacts to datadog'
+        required: false
+jobs:
+  #   ___ _        _     _    _     _
+  #  / __| |_ _  _| |___| |  (_)_ _| |_
+  #  \__ \  _| || | / -_) |__| | ' \  _|
+  #  |___/\__|\_, |_\___|____|_|_||_\__|
+  #           |__/
+  # StyleLint
+  eslint:
+    name: StyleLint
+    runs-on: ubuntu-latest
+    #      group: shared-builds
+    env:
+      ESLINT_RC: .stylelintrc.*
+      NODE_VERSION: 20
+
+    steps:
+      - name: 🤘 Getting the repo
+        uses: actions/checkout@v4
+
+      - name: Installing node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 🧶 install
+        uses: ./.github/actions/yarn
+        timeout-minutes: 20
+        with:
+          token: ${{ secrets.GPR_PAT }}
+
+      - name: Run StyleLint
+        id: stylelint_run
+        env:
+          GITHUB_TOKEN: ${{ secrets.GPR_PAT }}
+          DD_SERVICE: ${{ inputs.projectName }}
+          DD_ENV: ci
+          NODE_OPTIONS: -r dd-trace/ci/init
+        run: |
+          yarn stylelint --formatter json --output-file stylelint-output.json 2> /dev/null || true
+          
+          if [ -f stylelint-output.json ]; then
+            stylelint-duelie ./stylelint-output.json ./stylelint-output.xml
+            rm stylelint-output.json
+          fi
+
+      - name: Check for StyleLint JUnit File
+        id: check_stylelint_junit
+        run: |
+          echo "stylelint_file_exists=$(test -f stylelint-output.xml && echo true || echo false)" >> $GITHUB_ENV
+
+      - name: DataDog Upload for StyleLint
+        if: steps.stylelint_run.outcome == 'success' && env.stylelint_file_exists == 'true'
+        env:
+          DATADOG_API_KEY: ${{ secrets.DD_API_KEY }}
+          DD_SERVICE: ${{ inputs.projectName }}
+          DD_ENV: ci
+        run: |
+          datadog-ci junit upload stylelint-output.xml
