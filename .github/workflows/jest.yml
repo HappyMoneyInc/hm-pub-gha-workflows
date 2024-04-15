@@ -40,7 +40,7 @@ jobs:
 
     steps:
       - name: 🤘 Getting the repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # TODO I think this is using a duplication of the env variables
       # from the filesystem instead of github environment
@@ -51,7 +51,7 @@ jobs:
           skip-summary: true
 
       - name: Installing node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -62,7 +62,7 @@ jobs:
           token: ${{ secrets.GPR_PAT }}
 
       - name: Jest
-        id: test
+        id: jest_test
         env:
           GITHUB_TOKEN: ${{ secrets.GPR_PAT }}
           DD_SERVICE: ${{ inputs.projectName }}
