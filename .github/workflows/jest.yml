@@ -69,7 +69,12 @@ jobs:
           DD_ENV: ci
           NODE_OPTIONS: -r dd-trace/ci/init
         run: |
-          yarn test --ci --reporters=jest-junit 2> /dev/null || true
+          set +e
+          yarn test --ci --reporters=jest-junit --reporters=default
+          exitcode="$?"
+          
+          echo "exitcode=$?" >> $GITHUB_OUTPUT
+          exit "$exitcode"
 
       - name: Check for JUnit File
         id: check_junit

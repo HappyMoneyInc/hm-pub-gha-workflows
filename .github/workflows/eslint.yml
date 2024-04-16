@@ -38,10 +38,10 @@ jobs:
 
     steps:
       - name: 🤘 Getting the repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Installing node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -59,7 +59,12 @@ jobs:
           DD_ENV: ci
           NODE_OPTIONS: -r dd-trace/ci/init
         run: |
+          set +e
           yarn eslint --format junit --output-file eslint-output.xml 2> /dev/null || true
+          exitcode="$?"
+          
+          echo "exitcode=$?" >> $GITHUB_OUTPUT
+          exit "$exitcode"
 
       - name: Check for ESLint JUnit File
         id: check_eslint_junit
