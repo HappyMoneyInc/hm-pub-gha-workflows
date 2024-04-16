@@ -60,7 +60,7 @@ jobs:
           NODE_OPTIONS: -r dd-trace/ci/init
         run: |
           set +e
-          yarn stylelint --formatter json --output-file stylelint-output.json 1> /dev/null || true
+          yarn stylelint --formatter json --output-file stylelint-output.json 1> /dev/null
           exitcode="$?"
           
           if [ -f stylelint-output.json ]; then

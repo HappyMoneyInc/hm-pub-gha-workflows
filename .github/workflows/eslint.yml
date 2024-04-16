@@ -60,7 +60,7 @@ jobs:
           NODE_OPTIONS: -r dd-trace/ci/init
         run: |
           set +e
-          yarn eslint --format junit --output-file eslint-output.xml 2> /dev/null || true
+          yarn eslint --format junit --output-file eslint-output.xml 2> /dev/null
           exitcode="$?"
           
           echo "exitcode=$?" >> $GITHUB_OUTPUT
