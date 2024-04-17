@@ -116,7 +116,7 @@ jobs:
     steps:
 
       - name: 🤘 Getting the repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
 
@@ -137,6 +137,8 @@ jobs:
           REACT_APP_PUBLIC_OKTA_CLIENT_ID: ${{ secrets.REACT_APP_PUBLIC_OKTA_CLIENT_ID }}
           REACT_APP_PUBLIC_OKTA_STATE: ${{ secrets.REACT_APP_PUBLIC_OKTA_STATE }}
           SEGMENT_KEY: ${{ secrets.SEGMENT_KEY }}
+          COGNITO_CLIENTID: ${{ secrets.COGNITO_CLIENTID }}
+          COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
 
       # TODO maybe put team/domain tags here?
       - name: 🚚 Dump secrets to dotenv file
@@ -161,7 +163,7 @@ jobs:
           swap-size-gb: 10
 
       - name: Installing node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
