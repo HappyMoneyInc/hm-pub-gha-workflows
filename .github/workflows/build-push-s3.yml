@@ -86,6 +86,12 @@ on:
       COGNITO_USER_POOL_ID:
         description: 'Cognito User Pool Id'
         required: false
+      LOG_LEVEL:
+        description: 'Logger level.'
+        required: false
+      DD_SERVICE:
+        description: 'DataDog service.'
+        required: false
 
 jobs:
 
@@ -139,6 +145,8 @@ jobs:
           SEGMENT_KEY: ${{ secrets.SEGMENT_KEY }}
           COGNITO_CLIENTID: ${{ secrets.COGNITO_CLIENTID }}
           COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
+          LOG_LEVEL: ${{ secrets.LOG_LEVEL }}
+          DD_SERVICE: ${{ secrets.DD_SERVICE }}
 
       # TODO maybe put team/domain tags here?
       - name: 🚚 Dump secrets to dotenv file
