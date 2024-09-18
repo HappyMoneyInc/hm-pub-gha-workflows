@@ -89,6 +89,9 @@ on:
       OSCILAR_ENV_ID:
         description: 'Env ID for getting Oscilar sdk'
         required: false
+      KOUNT_CLIENT_ID:
+        description: 'Client ID for getting Kount sdk'
+        required: false  
 
 jobs:
 
@@ -143,6 +146,7 @@ jobs:
           COGNITO_CLIENTID: ${{ secrets.COGNITO_CLIENTID }}
           COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
           OSCILAR_ENV_ID: ${{ secrets.OSCILAR_ENV_ID }}
+          KOUNT_CLIENT_ID: ${{ secrets.KOUNT_CLIENT_ID }}
 
       # TODO maybe put team/domain tags here?
       - name: 🚚 Dump secrets to dotenv file
