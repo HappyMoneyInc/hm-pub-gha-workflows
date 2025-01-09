@@ -136,7 +136,7 @@ jobs:
         run: terraform show -no-color -json tf.plan 1>tf.json 2>/dev/null
 
       - name: Upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tf-plan.json
           path: ./tf/tf.json
