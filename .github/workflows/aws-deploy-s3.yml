@@ -144,5 +144,4 @@ jobs:
              ./build/ \
              s3://hm-s3-bucket-${{ inputs.projectName }}-${{ inputs.env }}-ue1/ \
              --delete \
-             --cache-control "public, max-age=0, must-revalidate" \
-             --acl "bucket-owner-full-control"
+             --cache-control "public, max-age=0, must-revalidate"
