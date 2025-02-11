@@ -88,7 +88,7 @@ jobs:
         id: setup-terraform
 
       - name: Cache Terraform Modules
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: "~/.terraform.d/plugin-cache"
           key: ${{ runner.os }}-terraform-${{ hashFiles('**/*.tf') }}
