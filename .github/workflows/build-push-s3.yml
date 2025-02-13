@@ -268,6 +268,7 @@ jobs:
             "DD_LOGS_INJECTION_ARG=false"
             "DD_TRACE_DEBUG_ARG=false"
             "DD_TAGS_ARG=''"
+            "DD_VERSION_ARG=${{ inputs.imageTag }}"
           secrets: |
             "GITHUB_TOKEN=${{ secrets.GPR_PAT }}"
           context: .
